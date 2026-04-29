@@ -1,3 +1,9 @@
+"""
+    LagrangePolynomials{T}
+
+Barycentric Lagrange basis over a grid of type `T`. Stores the grid nodes and the
+pre-computed barycentric weights so that each basis function can be evaluated in O(K) time.
+"""
 struct LagrangePolynomials{T}
     grid::Vector{T}
     baryweights::Vector{T}
@@ -11,6 +17,12 @@ function (P::LagrangePolynomials{T})(alpha::Int, x::T)::T where {T}
     end
 end
 
+"""
+    getChebyshevGrid(K::Int) -> LagrangePolynomials{Float64}
+
+Return a `LagrangePolynomials` object built on the `K+1` Chebyshev nodes of the second
+kind mapped to `[0, 1]`, together with their barycentric weights.
+"""
 function getChebyshevGrid(K::Int)::LagrangePolynomials{Float64}
     chebgrid = 0.5 * (1.0 .- cospi.((0:K) / K))
     baryweights = [
@@ -77,6 +89,21 @@ function _compress_train(train::Vector{Array{Float64, 3}}, tolerance, maxbonddim
     return tt
 end
 
+"""
+    interpolatesinglescale(f, a, b, numbits, polynomialdegree; tolerance, maxbonddim)
+
+Construct a quantics tensor train (QTT) approximation of the univariate function `f` on
+`[a, b]` using a single-scale Chebyshev basis of degree `polynomialdegree` and `numbits`
+resolution levels. Returns a compressed `TensorTrain`.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits (resolution levels).
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `tolerance`: SVD truncation tolerance for compression (default `1e-12`).
+- `maxbonddim`: maximum bond dimension (default `typemax(Int)`).
+"""
 function interpolatesinglescale(
         f,
         a::Float64, b::Float64,
@@ -126,6 +153,13 @@ function _direct_product_coretensors(coretensors::AbstractArray{Array{T, 3}})::A
     return _direct_product_coretensors([c12, coretensors[3:end]...])
 end
 
+"""
+    interpolatesinglescale(f, a::NTuple{N}, b::NTuple{N}, numbits, polynomialdegree; ...)
+
+Multivariate extension of `interpolatesinglescale`. Approximates `f : ℝᴺ → ℝ` on the
+box `[a, b]` using a fused quantics unfolding scheme. Arguments are the same as the
+univariate method, plus `unfoldingscheme` (currently only `:fused`).
+"""
 function interpolatesinglescale(
         f,
         a::NTuple{N, Float64}, b::NTuple{N, Float64},
@@ -190,6 +224,21 @@ function _evalf(f, interval::NInterval{N, Float64}, P::LagrangePolynomials{Float
     return results
 end
 
+"""
+    interpolatemultiscale(f, a, b, numbits, polynomialdegree, cusplocations; ...)
+
+Construct a QTT approximation of `f` on `[a, b]` using a multiscale basis that places
+finer resolution near the supplied `cusplocations`. Useful for functions with known
+discontinuities or steep gradients at fixed points.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits.
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `cusplocations`: vector of points where the function is non-smooth.
+- `tolerance`, `maxbonddim`: compression parameters (see `interpolatesinglescale`).
+"""
 function interpolatemultiscale(
         f,
         a::Float64, b::Float64,
@@ -276,6 +325,270 @@ function interpolatemultiscale(
     end
     Alast = [Aright; F]
     push!(train, reshape(Alast, size(Alast, 1), 2^N, 1))
+
+    return _compress_train(train, tolerance, maxbonddim)
+end
+
+function estimate_interpolation_error(
+        f,
+        interval::Interval{Float64},
+        P::LagrangePolynomials{Float64}
+    )::Float64
+    values = _evalf(f, interval, P)
+    len = intervallength(interval)
+
+    test_points = 0.5 * (1.0 .- cospi.((0:(2 * length(P.grid) - 1)) / (2 * length(P.grid) - 1)))
+
+    max_err = 0.0
+    for t in test_points
+        x = interval.start + len * t
+        interp_val = sum(values[α + 1] * P(α, t) for α in 0:(length(P.grid) - 1))
+        max_err = max(max_err, abs(interp_val - f(x)))
+    end
+    return max_err
+end
+
+function estimate_interpolation_error(
+        f,
+        interval::NInterval{N, Float64},
+        P::LagrangePolynomials{Float64}
+    )::Float64 where {N}
+    values = _evalf(f, interval, P)
+    lens = intervallength(interval)
+    NP = length(P.grid)
+
+    test_points = 0.5 * (1.0 .- cospi.((0:(2 * NP - 1)) / (2 * NP - 1)))
+
+    max_err = 0.0
+    for tinds in Iterators.product(ntuple(_ -> 1:length(test_points), N)...)
+        ts = tuple((test_points[i] for i in tinds)...)
+        x = tuple((interval.start[n] + lens[n] * ts[n] for n in 1:N)...)
+
+        interp_val = 0.0
+        for αinds in Iterators.product(ntuple(_ -> 0:(NP - 1), N)...)
+            basis_val = prod(P(αinds[n], ts[n]) for n in 1:N)
+            interp_val += values[(αinds .+ 1)...] * basis_val
+        end
+        max_err = max(max_err, abs(interp_val - f(x...)))
+    end
+    return max_err
+end
+
+function detect_dangerous_intervals!(
+        dangerous_at_level::Vector{Vector{NInterval{N, Float64}}},
+        f,
+        interval::NInterval{N, Float64},
+        level::Int,
+        maxlevel::Int,
+        P::LagrangePolynomials{Float64},
+        tol::Float64
+    ) where {N}
+    if level > maxlevel
+        return
+    end
+
+    err = estimate_interpolation_error(f, interval, P)
+
+    return if err > tol
+        push!(dangerous_at_level[level], interval)
+        for subint in split(interval)
+            detect_dangerous_intervals!(dangerous_at_level, f, subint, level + 1, maxlevel, P, tol)
+        end
+    end
+end
+
+function is_dangerous(
+        interval::NInterval{N, Float64},
+        dangerous_list::Vector{NInterval{N, Float64}}
+    ) where {N}
+    for di in dangerous_list
+        if all(abs.(di.start .- interval.start) .< 1.0e-14) &&
+                all(abs.(di.stop .- interval.stop) .< 1.0e-14)
+            return true
+        end
+    end
+    return false
+end
+
+function find_dangerous_index(
+        interval::NInterval{N, Float64},
+        dangerous_list::Vector{NInterval{N, Float64}}
+    )::Int where {N}
+    for (i, di) in enumerate(dangerous_list)
+        if all(abs.(di.start .- interval.start) .< 1.0e-14) &&
+                all(abs.(di.stop .- interval.stop) .< 1.0e-14)
+            return i
+        end
+    end
+    return 0
+end
+
+"""
+    interpolateadaptive(f, a, b, numbits, polynomialdegree; tolerance, maxbonddim, adaptiveTol, singularities)
+
+Construct a QTT approximation of `f` on `[a, b]` with automatic detection of poorly
+resolved regions. Sub-intervals where the local interpolation error exceeds `adaptiveTol`
+are refined further. Known singularities can be supplied via `singularities` to seed the
+refinement path and avoid evaluating `f` there.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits.
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `adaptiveTol`: local error threshold that triggers refinement (default `1e-8`).
+- `singularities`: optional vector of known singular points to pre-refine around.
+- `tolerance`, `maxbonddim`: compression parameters (see `interpolatesinglescale`).
+"""
+function interpolateadaptive(
+        f,
+        a::Float64, b::Float64,
+        numbits::Int,
+        polynomialdegree::Int;
+        tolerance = 1.0e-12,
+        maxbonddim = typemax(Int),
+        adaptiveTol = 1.0e-8,
+        singularities::Vector{Float64} = Float64[]
+    )
+    return interpolateadaptive(
+        f, (a,), (b,), numbits, polynomialdegree, [(s,) for s in singularities];
+        tolerance = tolerance, maxbonddim = maxbonddim, adaptiveTol = adaptiveTol
+    )
+end
+
+function interpolateadaptive(
+        f,
+        a::NTuple{N, Float64}, b::NTuple{N, Float64},
+        numbits::Int,
+        polynomialdegree::Int,
+        singularities::Vector{NTuple{N, Float64}} = NTuple{N, Float64}[];
+        tolerance = 1.0e-12,
+        maxbonddim = typemax(Int),
+        adaptiveTol = 1.0e-8,
+        unfoldingscheme = :fused
+    ) where {N}
+    unfoldingscheme == :fused || error("unsupported unfolding scheme $(unfoldingscheme)")
+
+    P = getChebyshevGrid(polynomialdegree)
+    domain = NInterval{N, Float64}(a, b)
+
+    dangerous_at_level = [NInterval{N, Float64}[] for _ in 1:numbits]
+
+    for s in singularities
+        if s in domain
+            _add_singularity_path!(dangerous_at_level, domain, s, numbits)
+        end
+    end
+
+    for subint in split(domain)
+        detect_dangerous_intervals!(dangerous_at_level, f, subint, 1, numbits - 1, P, adaptiveTol)
+    end
+
+    if all(isempty, dangerous_at_level)
+        return interpolatesinglescale(
+            f, a, b, numbits, polynomialdegree;
+            tolerance = tolerance, maxbonddim = maxbonddim
+        )
+    end
+
+    return _build_adaptive_qtt(f, domain, numbits, P, dangerous_at_level, tolerance, maxbonddim)
+end
+
+function _add_singularity_path!(
+        dangerous_at_level::Vector{Vector{NInterval{N, Float64}}},
+        domain::NInterval{N, Float64},
+        singularity::NTuple{N, Float64},
+        numbits::Int
+    ) where {N}
+    interval = domain
+    for level in 1:(numbits - 1)
+        if !is_dangerous(interval, dangerous_at_level[level])
+            push!(dangerous_at_level[level], interval)
+        end
+
+        subintervals = split(interval)
+        for subint in subintervals
+            if singularity in subint
+                interval = subint
+                break
+            end
+        end
+    end
+    return
+end
+
+function _build_adaptive_qtt(
+        f,
+        domain::NInterval{N, Float64},
+        numbits::Int,
+        P::LagrangePolynomials{Float64},
+        dangerous_at_level::Vector{Vector{NInterval{N, Float64}}},
+        tolerance::Float64,
+        maxbonddim::Int
+    ) where {N}
+    polynomialdegree = length(P.grid) - 1
+    Acore_ = interpolationtensor(P)
+    Acore = _direct_product_coretensors(fill(Acore_, N))
+
+    Tfirstup = zeros(2^N, (polynomialdegree + 1)^N)
+    Tfirstdown = zeros(2^N, 0)
+    intervallist = NInterval{N, Float64}[]
+
+    for (i, interval) in enumerate(split(domain))
+        if !is_dangerous(interval, dangerous_at_level[1])
+            Tfirstup[i, :] = _evalf(f, interval, P)
+        else
+            Tfirstdown = [Tfirstdown;; indicator((2^N,), (i,))]
+            push!(intervallist, interval)
+        end
+    end
+
+    Tfirst = [Tfirstup;; Tfirstdown]
+    train = [reshape(Tfirst, 1, 2^N, size(Tfirst, 2))]
+
+    for ell in 2:(numbits - 1)
+        newintervallist = NInterval{N, Float64}[]
+        qell = length(intervallist)
+
+        if qell == 0
+            push!(train, Acore)
+            continue
+        end
+
+        F = zeros(qell, 2^N, (polynomialdegree + 1)^N)
+        χ = zeros(qell, 2^N, 0)
+
+        for (i, interval) in enumerate(intervallist)
+            for (s, subinterval) in enumerate(split(interval))
+                if !is_dangerous(subinterval, dangerous_at_level[ell])
+                    F[i, s, :] = _evalf(f, subinterval, P)
+                else
+                    χ = [χ;;; indicator((qell, 2^N, 1), (i, s, 1))]
+                    push!(newintervallist, subinterval)
+                end
+            end
+        end
+
+        Ak = [Acore; F;;; zeros((polynomialdegree + 1)^N, 2^N, size(χ, 3)); χ]
+        push!(train, Ak)
+        intervallist = newintervallist
+    end
+
+    Aright_ = [P(alpha, sigma / 2) for alpha in 0:polynomialdegree, sigma in [0, 1]]
+    Aright = _direct_product_coretensors(fill(reshape(Aright_, size(Aright_)..., 1), N))
+
+    if isempty(intervallist)
+        push!(train, reshape(Aright, size(Aright, 1), 2^N, 1))
+    else
+        F = zeros(length(intervallist), 2^N)
+        for (i, interval) in enumerate(intervallist)
+            for (s, subinterval) in enumerate(split(interval))
+                F[i, s] = f(subinterval.start...)
+            end
+        end
+        Alast = [Aright; F]
+        push!(train, reshape(Alast, size(Alast, 1), 2^N, 1))
+    end
 
     return _compress_train(train, tolerance, maxbonddim)
 end
