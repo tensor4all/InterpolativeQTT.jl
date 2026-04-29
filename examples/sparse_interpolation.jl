@@ -6,26 +6,22 @@ import TensorCrossInterpolation as TCI
 α   = 0.1
 f(x) = α / sqrt(α^2 + (x - 0.5)^2)
 a, b = 0.0, 1.0
-R    = 10          # depth: 2^R = 1024 grid points
-N_dense  = 100     # polynomial degree for dense construction
-N_sparse = 200     # polynomial degree for sparse construction (larger N is affordable)
+R    = 10       
+N_dense  = 100     
+N_sparse = 200
 
-# Evaluation grid
 grid        = QG.DiscretizedGrid{1}(R, a, b)
 quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
 plotx       = QG.grididx_to_origcoord.(Ref(grid), 1:(2^R))
 origdata    = f.(plotx)
 
-# Dense construction at N_dense
 tt_dense = PolynomialQTT.interpolatesinglescale(f, a, b, R, N_dense)
 err_dense = maximum(abs.(tt_dense.(quanticsinds) .- origdata))
 
-# Sparse constructions at N_sparse for varying M
 M_values = [5, 10, 15, 20, 30]
 tt_sparse = [PolynomialQTT.interpolatesinglescale_sparse(f, a, b, R, N_sparse, M) for M in M_values]
 errs_sparse = [maximum(abs.(tt.(quanticsinds) .- origdata)) for tt in tt_sparse]
 
-# ── Plot 1: the function ──────────────────────────────────────────────────────
 let
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel = L"x", ylabel = L"f(x)",
@@ -34,7 +30,6 @@ let
     fig
 end
 
-# ── Plot 2: interpolation error vs bandwidth M ────────────────────────────────
 let
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel = L"M \text{ (bandwidth)}", ylabel = "Max absolute error",
@@ -47,8 +42,6 @@ let
     fig
 end
 
-# ── Plot 3: bond dimensions ───────────────────────────────────────────────────
-# Pick the best-performing sparse result (M = 10)
 M_best = 10
 tt_best = tt_sparse[findfirst(==(M_best), M_values)]
 
@@ -64,7 +57,6 @@ let
     fig
 end
 
-# ── Print summary ─────────────────────────────────────────────────────────────
 println("Dense  N=$N_dense:  max err = $err_dense  rank = $(TCI.rank(tt_dense))")
 for (M, tt, err) in zip(M_values, tt_sparse, errs_sparse)
     println("Sparse N=$N_sparse M=$M:  max err = $err  rank = $(TCI.rank(tt))")

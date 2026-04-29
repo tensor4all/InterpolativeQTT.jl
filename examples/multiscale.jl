@@ -10,7 +10,7 @@ K = 25
 R = 8
 
 tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
-tt_adaptive = interpolateadaptive(f, a, b, R, K)
+tt_adaptive = PolynomialQTT.interpolateadaptive(f, a, b, R, K)
 
 grid = QG.DiscretizedGrid(R, a, b)
 
