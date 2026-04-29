@@ -1,3 +1,9 @@
+"""
+    LagrangePolynomials{T}
+
+Barycentric Lagrange basis over a grid of type `T`. Stores the grid nodes and the
+pre-computed barycentric weights so that each basis function can be evaluated in O(K) time.
+"""
 struct LagrangePolynomials{T}
     grid::Vector{T}
     baryweights::Vector{T}
@@ -11,6 +17,12 @@ function (P::LagrangePolynomials{T})(alpha::Int, x::T)::T where {T}
     end
 end
 
+"""
+    getChebyshevGrid(K::Int) -> LagrangePolynomials{Float64}
+
+Return a `LagrangePolynomials` object built on the `K+1` Chebyshev nodes of the second
+kind mapped to `[0, 1]`, together with their barycentric weights.
+"""
 function getChebyshevGrid(K::Int)::LagrangePolynomials{Float64}
     chebgrid = 0.5 * (1.0 .- cospi.((0:K) / K))
     baryweights = [
@@ -77,6 +89,21 @@ function _compress_train(train::Vector{Array{Float64, 3}}, tolerance, maxbonddim
     return tt
 end
 
+"""
+    interpolatesinglescale(f, a, b, numbits, polynomialdegree; tolerance, maxbonddim)
+
+Construct a quantics tensor train (QTT) approximation of the univariate function `f` on
+`[a, b]` using a single-scale Chebyshev basis of degree `polynomialdegree` and `numbits`
+resolution levels. Returns a compressed `TensorTrain`.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits (resolution levels).
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `tolerance`: SVD truncation tolerance for compression (default `1e-12`).
+- `maxbonddim`: maximum bond dimension (default `typemax(Int)`).
+"""
 function interpolatesinglescale(
         f,
         a::Float64, b::Float64,
@@ -126,6 +153,13 @@ function _direct_product_coretensors(coretensors::AbstractArray{Array{T, 3}})::A
     return _direct_product_coretensors([c12, coretensors[3:end]...])
 end
 
+"""
+    interpolatesinglescale(f, a::NTuple{N}, b::NTuple{N}, numbits, polynomialdegree; ...)
+
+Multivariate extension of `interpolatesinglescale`. Approximates `f : ℝᴺ → ℝ` on the
+box `[a, b]` using a fused quantics unfolding scheme. Arguments are the same as the
+univariate method, plus `unfoldingscheme` (currently only `:fused`).
+"""
 function interpolatesinglescale(
         f,
         a::NTuple{N, Float64}, b::NTuple{N, Float64},
@@ -190,6 +224,21 @@ function _evalf(f, interval::NInterval{N, Float64}, P::LagrangePolynomials{Float
     return results
 end
 
+"""
+    interpolatemultiscale(f, a, b, numbits, polynomialdegree, cusplocations; ...)
+
+Construct a QTT approximation of `f` on `[a, b]` using a multiscale basis that places
+finer resolution near the supplied `cusplocations`. Useful for functions with known
+discontinuities or steep gradients at fixed points.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits.
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `cusplocations`: vector of points where the function is non-smooth.
+- `tolerance`, `maxbonddim`: compression parameters (see `interpolatesinglescale`).
+"""
 function interpolatemultiscale(
         f,
         a::Float64, b::Float64,
@@ -374,6 +423,23 @@ function find_dangerous_index(
     return 0
 end
 
+"""
+    interpolateadaptive(f, a, b, numbits, polynomialdegree; tolerance, maxbonddim, adaptiveTol, singularities)
+
+Construct a QTT approximation of `f` on `[a, b]` with automatic detection of poorly
+resolved regions. Sub-intervals where the local interpolation error exceeds `adaptiveTol`
+are refined further. Known singularities can be supplied via `singularities` to seed the
+refinement path and avoid evaluating `f` there.
+
+# Arguments
+- `f`: callable with signature `f(x::Float64) -> Float64`.
+- `a`, `b`: endpoints of the interval.
+- `numbits`: number of quantics bits.
+- `polynomialdegree`: degree of the local Chebyshev polynomial basis.
+- `adaptiveTol`: local error threshold that triggers refinement (default `1e-8`).
+- `singularities`: optional vector of known singular points to pre-refine around.
+- `tolerance`, `maxbonddim`: compression parameters (see `interpolatesinglescale`).
+"""
 function interpolateadaptive(
         f,
         a::Float64, b::Float64,
