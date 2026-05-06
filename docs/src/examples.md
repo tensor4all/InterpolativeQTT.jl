@@ -7,7 +7,7 @@ In this example, we demonstrate how to do multi-scale interpolation of a highly 
 We begin by loading the necessary packages and defining the function and grid parameters.
 
 ```@example oscillatory
-using PolynomialQTT
+using InterpolativeQTT
 import TensorCrossInterpolation as TCI 
 
 f(x) = cos(x^2) + sin(π * x)
@@ -18,7 +18,7 @@ R = 8;
 We call the `interpolatesinglescale` function to perform the interpolation. This function takes the function `f`, the interval endpoints `a` and `b`, the number of interpolation nodes `K`, and the number of tensor cores `R` as inputs.
 
 ```@example oscillatory
-tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
+tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
 ```
 This returns a `TensorTrain` object. Using [QuanticsGrids.jl](https://github.com/tensor4all/QuanticsGrids.jl) we can plot the results and compare the interpolated function with the original function. 
 

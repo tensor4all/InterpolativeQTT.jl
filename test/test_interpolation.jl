@@ -1,5 +1,5 @@
 using Test
-import PolynomialQTT
+import InterpolativeQTT
 import QuanticsGrids as QG
 import TensorCrossInterpolation as TCI
 import LinearAlgebra: norm
@@ -10,7 +10,7 @@ import LinearAlgebra: norm
     f(x) = exp(-x^2)
     K = 20
 
-    tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
     @test TCI.rank(tt) <= K + 1
 
     grid = QG.DiscretizedGrid{1}(R, a, b)
@@ -27,7 +27,7 @@ end
     f(x) = exp(-x^2)
     K = 20
 
-    tt = PolynomialQTT.interpolatesinglescale(f, (a,), (b,), R, K)
+    tt = InterpolativeQTT.interpolatesinglescale(f, (a,), (b,), R, K)
     @test TCI.rank(tt) <= K + 1
 
     grid = QG.DiscretizedGrid{1}(R, a, b)
@@ -45,7 +45,7 @@ end
     a, b = (-1.0, -1.0), (2.0, 2.0)
     f(x, y) = exp(-x^2 - y^3)
 
-    tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
     @test TCI.rank(tt) <= (K + 1)^2
     @test length(tt) == R
 
@@ -67,7 +67,7 @@ end
     a, b = (-1.0, -1.0, 0.0), (2.0, 2.0, 1.0)
     f(x, y, z) = exp(-x^2 - y^3 - 2 * z^2)
 
-    tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
     @test TCI.rank(tt) <= (K + 1)^3
     @test length(tt) == R
 
@@ -89,7 +89,7 @@ end
     f(x) = exp(-x^2) + abs(x)
     K = 25
 
-    tt = PolynomialQTT.interpolatemultiscale(f, a, b, R, K, Float64[0])
+    tt = InterpolativeQTT.interpolatemultiscale(f, a, b, R, K, Float64[0])
     @test TCI.rank(tt) <= K + 2
 
     grid = QG.DiscretizedGrid{1}(R, a, b)
@@ -109,7 +109,7 @@ end
     f(x, y) = exp(-x^2 - 2 * y^2)
     K = 10
 
-    tt = PolynomialQTT.interpolatemultiscale(f, a, b, R, K, [(0.0, 0.0)])
+    tt = InterpolativeQTT.interpolatemultiscale(f, a, b, R, K, [(0.0, 0.0)])
 
     @test TCI.rank(tt) <= (K + 2)^N
 
@@ -127,13 +127,13 @@ end
 @testset "NInterval" begin
     @testset "split" begin
 
-        interval = PolynomialQTT.NInterval{2, Float64}((-1.0, -1.0), (1.0, 1.0))
+        interval = InterpolativeQTT.NInterval{2, Float64}((-1.0, -1.0), (1.0, 1.0))
 
-        @test PolynomialQTT.split(interval) == [
-            PolynomialQTT.NInterval{2, Float64}((-1.0, -1.0), (0.0, 0.0)),
-            PolynomialQTT.NInterval{2, Float64}((0.0, -1.0), (1.0, 0.0)),
-            PolynomialQTT.NInterval{2, Float64}((-1.0, 0.0), (0.0, 1.0)),
-            PolynomialQTT.NInterval{2, Float64}((0.0, 0.0), (1.0, 1.0)),
+        @test InterpolativeQTT.split(interval) == [
+            InterpolativeQTT.NInterval{2, Float64}((-1.0, -1.0), (0.0, 0.0)),
+            InterpolativeQTT.NInterval{2, Float64}((0.0, -1.0), (1.0, 0.0)),
+            InterpolativeQTT.NInterval{2, Float64}((-1.0, 0.0), (0.0, 1.0)),
+            InterpolativeQTT.NInterval{2, Float64}((0.0, 0.0), (1.0, 1.0)),
         ]
     end
 end
@@ -141,7 +141,7 @@ end
 @testset "_direct_product_coretensors (two tensors)" begin
     χ = 3
     coretensors = [randn(χ, 2, χ) for _ in 1:2]
-    c12 = PolynomialQTT._direct_product_coretensors(coretensors)
+    c12 = InterpolativeQTT._direct_product_coretensors(coretensors)
     c12_ref = Array{Float64, 6}(undef, χ, χ, 2, 2, χ, χ)
     for i in 1:χ, j in 1:χ, k in 1:2, l in 1:2, m in 1:χ, n in 1:χ
         c12_ref[i, j, k, l, m, n] = coretensors[1][i, k, m] * coretensors[2][j, l, n]
@@ -153,7 +153,7 @@ end
 @testset "_direct_product_coretensors (three tensors)" begin
     χ = 3
     coretensors = [randn(χ, 2, χ) for _ in 1:3]
-    c123 = PolynomialQTT._direct_product_coretensors(coretensors)
+    c123 = InterpolativeQTT._direct_product_coretensors(coretensors)
     c123_ref = Array{Float64, 9}(undef, χ, χ, χ, 2, 2, 2, χ, χ, χ)
     for i in 1:χ, j in 1:χ, k in 1:χ, l in 1:2, m in 1:2, n in 1:2, o in 1:χ, p in 1:χ, q in 1:χ
         c123_ref[i, j, k, l, m, n, o, p, q] =
@@ -169,7 +169,7 @@ end
     f(x) = x == 0.0 ? 0.0 : 1 / x
     K = 25
 
-    tt = PolynomialQTT.interpolatemultiscale(f, a, b, R, K, Float64[0], tolerance = 1.0e-12)
+    tt = InterpolativeQTT.interpolatemultiscale(f, a, b, R, K, Float64[0], tolerance = 1.0e-12)
     @test TCI.rank(tt) <= K + 2
 
     grid = QG.DiscretizedGrid{1}(R, a, b)
@@ -188,10 +188,10 @@ end
     a, b = 0.0, 1.0
     f(x) = sin(2 * π * x)
     K = 5
-    P = PolynomialQTT.getChebyshevGrid(K)
-    interval = PolynomialQTT.Interval{Float64}(a, b)
+    P = InterpolativeQTT.getChebyshevGrid(K)
+    interval = InterpolativeQTT.Interval{Float64}(a, b)
     
-    err = PolynomialQTT.estimate_interpolation_error(f, interval, P)
+    err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0
 end
@@ -200,10 +200,10 @@ end
     a, b = (-1.0, -1.0), (1.0, 1.0)
     f(x, y) = sin(π * x) * cos(π * y)
     K = 5
-    P = PolynomialQTT.getChebyshevGrid(K)
-    interval = PolynomialQTT.NInterval{2, Float64}(a, b)
+    P = InterpolativeQTT.getChebyshevGrid(K)
+    interval = InterpolativeQTT.NInterval{2, Float64}(a, b)
     
-    err = PolynomialQTT.estimate_interpolation_error(f, interval, P)
+    err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0
 end
@@ -212,10 +212,10 @@ end
     a, b = (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
     f(x, y, z) = exp(-x^2 - y^2 - z^2)
     K = 10
-    P = PolynomialQTT.getChebyshevGrid(K)
-    interval = PolynomialQTT.NInterval{3, Float64}(a, b)
+    P = InterpolativeQTT.getChebyshevGrid(K)
+    interval = InterpolativeQTT.NInterval{3, Float64}(a, b)
     
-    err = PolynomialQTT.estimate_interpolation_error(f, interval, P)
+    err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0e-8
 end

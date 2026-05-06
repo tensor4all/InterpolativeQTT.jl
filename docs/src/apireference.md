@@ -3,26 +3,26 @@
 ## Interpolation
 
 ```@docs
-PolynomialQTT.interpolatesinglescale
-PolynomialQTT.interpolatemultiscale
-PolynomialQTT.interpolateadaptive
-PolynomialQTT.interpolatesinglescale_sparse
-PolynomialQTT.angular_local_lagrange
+InterpolativeQTT.interpolatesinglescale
+InterpolativeQTT.interpolatemultiscale
+InterpolativeQTT.interpolateadaptive
+InterpolativeQTT.interpolatesinglescale_sparse
+InterpolativeQTT.angular_local_lagrange
 ```
 
 ## Polynomial Basis
 
 ```@docs
-PolynomialQTT.LagrangePolynomials
-PolynomialQTT.getChebyshevGrid
+InterpolativeQTT.LagrangePolynomials
+InterpolativeQTT.getChebyshevGrid
 ```
 
 ## Intervals
 
 ```@docs
-PolynomialQTT.Interval
-PolynomialQTT.NInterval
-PolynomialQTT.midpoint
-PolynomialQTT.split
-PolynomialQTT.intervallength
+InterpolativeQTT.Interval
+InterpolativeQTT.NInterval
+InterpolativeQTT.midpoint
+InterpolativeQTT.split
+InterpolativeQTT.intervallength
 ```

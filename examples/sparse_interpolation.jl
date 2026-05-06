@@ -1,4 +1,4 @@
-using PolynomialQTT
+using InterpolativeQTT
 using CairoMakie
 import QuanticsGrids as QG
 import TensorCrossInterpolation as TCI
@@ -15,11 +15,11 @@ quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
 plotx       = QG.grididx_to_origcoord.(Ref(grid), 1:(2^R))
 origdata    = f.(plotx)
 
-tt_dense = PolynomialQTT.interpolatesinglescale(f, a, b, R, N_dense)
+tt_dense = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N_dense)
 err_dense = maximum(abs.(tt_dense.(quanticsinds) .- origdata))
 
 M_values = [5, 10, 15, 20, 30]
-tt_sparse = [PolynomialQTT.interpolatesinglescale_sparse(f, a, b, R, N_sparse, M) for M in M_values]
+tt_sparse = [InterpolativeQTT.interpolatesinglescale_sparse(f, a, b, R, N_sparse, M) for M in M_values]
 errs_sparse = [maximum(abs.(tt.(quanticsinds) .- origdata)) for tt in tt_sparse]
 
 let

@@ -2,14 +2,14 @@ using CairoMakie
 import QuanticsGrids as QG
 import TensorCrossInterpolation as TCI
 using LinearAlgebra
-using PolynomialQTT
+using InterpolativeQTT
 
 f(x) = cos(x^2) + sin(π * x)
 a, b = -2.0, sqrt(2)
 K = 10
 R = 8
 
-tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
+tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
 
 grid = QG.DiscretizedGrid(R, a, b)
 

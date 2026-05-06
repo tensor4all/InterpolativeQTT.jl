@@ -1,4 +1,4 @@
-module PolynomialQTT
+module InterpolativeQTT
 
 import TensorCrossInterpolation as TCI
 using LinearAlgebra
