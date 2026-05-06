@@ -1,4 +1,4 @@
-using PolynomialQTT
+using InterpolativeQTT
 using CairoMakie
 import QuanticsGrids as QG
 import TensorCrossInterpolation as TCI
@@ -9,8 +9,8 @@ a, b = 0.0, 1.0
 K = 25
 R = 8
 
-tt = PolynomialQTT.interpolatesinglescale(f, a, b, R, K)
-tt_adaptive = PolynomialQTT.interpolateadaptive(f, a, b, R, K)
+tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, K)
+tt_adaptive = InterpolativeQTT.interpolateadaptive(f, a, b, R, K)
 
 grid = QG.DiscretizedGrid(R, a, b)
 

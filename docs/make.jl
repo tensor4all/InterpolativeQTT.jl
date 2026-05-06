@@ -1,14 +1,14 @@
-using PolynomialQTT
+using InterpolativeQTT
 using Documenter
 
-DocMeta.setdocmeta!(PolynomialQTT, :DocTestSetup, :(using PolynomialQTT); recursive = true)
+DocMeta.setdocmeta!(InterpolativeQTT, :DocTestSetup, :(using InterpolativeQTT); recursive = true)
 
 makedocs(;
-    modules = [PolynomialQTT],
+    modules = [InterpolativeQTT],
     authors = "Hiroshi Shinaoka <h.shinaoka@gmail.com> and contributors",
-    sitename = "PolynomialQTT.jl",
+    sitename = "InterpolativeQTT.jl",
     format = Documenter.HTML(;
-        canonical = "https://github.com/tensor4all/PolynomialQTT.jl",
+        canonical = "https://github.com/tensor4all/InterpolativeQTT.jl",
         edit_link = "main",
         assets = String[],
     ),
@@ -20,4 +20,4 @@ makedocs(;
 
 )
 
-deploydocs(; repo = "github.com/tensor4all/PolynomialQTT.jl.git", devbranch = "main", target = "build", branch = "gh-pages")
+deploydocs(; repo = "github.com/tensor4all/InterpolativeQTT.jl.git", devbranch = "main", target = "build", branch = "gh-pages")
