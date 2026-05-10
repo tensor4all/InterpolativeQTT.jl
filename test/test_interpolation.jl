@@ -180,7 +180,6 @@ end
 
     ref = origdata
     diff = abs.(ttdata .- origdata)
-    # We use the Frobenius norm as the result is trucated by SVD with a tolerance
     @test norm(diff) / norm(ref) < 1.0e-11
 end
 
@@ -190,7 +189,7 @@ end
     K = 5
     P = InterpolativeQTT.getChebyshevGrid(K)
     interval = InterpolativeQTT.Interval{Float64}(a, b)
-    
+
     err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0
@@ -202,7 +201,7 @@ end
     K = 5
     P = InterpolativeQTT.getChebyshevGrid(K)
     interval = InterpolativeQTT.NInterval{2, Float64}(a, b)
-    
+
     err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0
@@ -214,8 +213,132 @@ end
     K = 10
     P = InterpolativeQTT.getChebyshevGrid(K)
     interval = InterpolativeQTT.NInterval{3, Float64}(a, b)
-    
+
     err = InterpolativeQTT.estimate_interpolation_error(f, interval, P)
     @test err >= 0.0
     @test err < 1.0e-8
+end
+
+@testset "invertqtt (uncompressed, Stage 1)" begin
+    R = 12
+    N = 10
+    a, b = 0.0, 1.0
+    f(x) = exp(-x^2)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    @test size(S, 1) == 2^K_out
+    @test size(S, 2) == N + 1
+
+    max_err = 0.0
+    for i in 1:2^K_out
+        for β in 0:N
+            x_ref = a + (b - a) * (i - 1 + P.grid[β + 1]) / 2^K_out
+            max_err = max(max_err, abs(S[i, β + 1] - f(x_ref)))
+        end
+    end
+    @test max_err < 1.0e-6
+end
+
+@testset "invertqtt (compressed)" begin
+    R = 12
+    N = 10
+    a, b = 0.0, 1.0
+    f(x) = exp(-x^2)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 1.0e-10)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    max_err = 0.0
+    for i in 1:2^K_out
+        for β in 0:N
+            x_ref = a + (b - a) * (i - 1 + P.grid[β + 1]) / 2^K_out
+            max_err = max(max_err, abs(S[i, β + 1] - f(x_ref)))
+        end
+    end
+    @test max_err < 1.0e-6
+end
+
+@testset "invertqtt round trip (uncompressed)" begin
+    R = 8
+    N = 10
+    a, b = 0.0, 1.0
+    f(x) = exp(-x^2)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+
+    grid = QG.DiscretizedGrid{1}(R, a, b)
+    quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
+    ttvals = tt.(quanticsinds)
+
+    max_err = 0.0
+    for i in 1:2^K_out
+        v_left  = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
+        v_right = sum(P(β, 0.5) * S[i, β + 1] for β in 0:N)
+        max_err = max(max_err, abs(v_left  - ttvals[2i - 1]))
+        max_err = max(max_err, abs(v_right - ttvals[2i]))
+    end
+    @test max_err < 1.0e-11
+end
+
+@testset "invertqtt round trip (compressed)" begin
+    R = 10
+    N = 10
+    a, b = 0.0, 1.0
+    f(x) = exp(-x^2)
+    tol = 1.0e-8
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = tol)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+
+    grid = QG.DiscretizedGrid{1}(R, a, b)
+    quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
+    ttvals = tt.(quanticsinds)
+
+    max_err = 0.0
+    for i in 1:2^K_out
+        v_left  = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
+        v_right = sum(P(β, 0.5) * S[i, β + 1] for β in 0:N)
+        max_err = max(max_err, abs(v_left  - ttvals[2i - 1]))
+        max_err = max(max_err, abs(v_right - ttvals[2i]))
+    end
+    @test max_err < 1.0e-6
+end
+
+@testset "invertqtt (Stage 2 coarse levels)" begin
+    R = 10
+    N = 8
+    a, b = -1.0, 1.0
+    f(x) = cos(π * x)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    for (k, S) in enumerate(result)
+        max_err = 0.0
+        for i in axes(S, 1)
+            for β in 0:N
+                x_ref = a + (b - a) * (i - 1 + P.grid[β + 1]) / 2^k
+                max_err = max(max_err, abs(S[i, β + 1] - f(x_ref)))
+            end
+        end
+        @test max_err < 1.0e-4
+    end
 end

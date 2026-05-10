@@ -329,6 +329,122 @@ function interpolatemultiscale(
     return _compress_train(train, tolerance, maxbonddim)
 end
 
+function _invert_stage1(tt::TCI.TensorTrain, P::LagrangePolynomials{Float64}, q::Int)
+    cores = TCI.sitetensors(tt)
+    K = length(cores)
+    K_out = K - q
+    N = length(P.grid) - 1
+
+    # Build Lagrange L: linear interpolation from binary nodes {0, 0.5} to Chebyshev nodes.
+    # L[σ, β] = σ-th Lagrange basis on {0, 0.5} evaluated at P.grid[β].
+    # L[1, β] = 1 - 2c^β   (σ=0, node at 0)
+    # L[2, β] = 2c^β        (σ=1, node at 0.5)
+    L = [1.0 - 2.0 * c for c in P.grid]  # σ=0 row
+    L = vcat(L', [2.0 * c for c in P.grid]')  # shape (2, N+1)
+
+    # Contract the last core with L to produce a (r_{K-1}, N+1) decode matrix.
+    # For any QTT (compressed or not) this gives:
+    #   S[i, β] = QTT[(σ₁,...,σ_{K-1}, 0)] × (1−2c^β) + QTT[(σ₁,...,σ_{K-1}, 1)] × 2c^β
+    # i.e. linear interpolation from two binary evaluations to the Chebyshev node c^β.
+    core_K = cores[K]                     # (r_{K-1}, 2, 1) for 1-D
+    r_K = size(core_K, 1)
+    decode = reshape(core_K, r_K, 2) * L  # (r_{K-1}, N+1)
+
+    # Partial contraction of first K_out cores.
+    # current[i, :] = contraction of cores 1..K_out at the i-th binary index.
+    current = reshape(cores[1][1, :, :], size(cores[1], 2), size(cores[1], 3))
+
+    for k in 2:K_out
+        core = cores[k]                  # (r_{k-1}, phys, r_k)
+        phys = size(core, 2)
+        r_right = size(core, 3)
+        n = size(current, 1)
+        new_current = zeros(eltype(current), n * phys, r_right)
+        for i in 1:n
+            v = current[i, :]
+            for σ in 1:phys
+                new_current[(i - 1) * phys + σ, :] = v' * core[:, σ, :]
+            end
+        end
+        current = new_current
+    end
+    return current * decode   # (2^{K_out}, N+1)
+end
+
+function _build_restriction(P::LagrangePolynomials{Float64})
+    N = length(P.grid) - 1
+    # R_left[γ, β]  = P(β, 2c^γ)     when c^γ ≤ 0.5, else 0
+    # R_right[γ, β] = P(β, 2c^γ − 1) when c^γ > 0.5, else 0
+    # S_coarse[i, :] = R_left * S_fine[2i-1, :] + R_right * S_fine[2i, :]
+    R_left  = zeros(N + 1, N + 1)
+    R_right = zeros(N + 1, N + 1)
+    for (γ1, c) in enumerate(P.grid)
+        if c <= 0.5
+            for β in 0:N
+                R_left[γ1, β + 1] = P(β, 2 * c)
+            end
+        else
+            for β in 0:N
+                R_right[γ1, β + 1] = P(β, 2 * c - 1)
+            end
+        end
+    end
+    return R_left, R_right
+end
+
+function _apply_stage2(S::Matrix{Float64}, R_left::Matrix{Float64}, R_right::Matrix{Float64})
+    n_fine = size(S, 1)
+    n_coarse = n_fine ÷ 2
+    N1 = size(R_left, 1)
+    S_coarse = zeros(n_coarse, N1)
+    for i in 1:n_coarse
+        S_coarse[i, :] = R_left * S[2i - 1, :] + R_right * S[2i, :]
+    end
+    return S_coarse
+end
+
+"""
+    invertqtt(tt, P; q=1) -> Vector{Matrix{Float64}}
+
+Invert a QTT to recover function values on multiresolution Chebyshev-Lobatto grids
+(§5 of Lindsey arXiv:2311.12554).
+
+Returns `[S₁, S₂, ..., S_{K-q}]` where `Sₖ` has shape `(2^k, N+1)` and
+`Sₖ[i, β+1]` approximates `f` at the `β`-th Chebyshev-Lobatto node in the
+`i`-th sub-interval at level `k`. The physical coordinate is
+    x = a + (b-a) * (i-1 + P.grid[β+1]) / 2^k
+
+Stage 1 uses linear Lagrange interpolation from two binary evaluations to
+each Chebyshev node, giving accuracy O(2^{-2K}). Works for any `TensorTrain`,
+including after SVD compression. The total error is bounded by the SVD
+truncation tolerance plus O(2^{-2K}).
+
+# Arguments
+- `tt`: `TCI.TensorTrain` with `K` binary cores.
+- `P`: `LagrangePolynomials` from `getChebyshevGrid(N)`.
+- `q`: number of fine-scale levels collapsed by Stage 1 (default `1`).
+"""
+function invertqtt(
+        tt::TCI.TensorTrain,
+        P::LagrangePolynomials{Float64};
+        q::Int = 1
+    )
+    K = length(tt)
+    K_out = K - q
+    1 <= q < K || throw(ArgumentError("q must satisfy 1 ≤ q < K=$K, got q=$q"))
+
+    S = _invert_stage1(tt, P, q)   # (2^{K_out}, N+1)
+
+    R_left, R_right = _build_restriction(P)
+
+    results = Vector{Matrix{Float64}}(undef, K_out)
+    results[K_out] = S
+    for k in (K_out - 1):-1:1
+        results[k] = _apply_stage2(results[k + 1], R_left, R_right)
+    end
+    return results
+end
+
 function estimate_interpolation_error(
         f,
         interval::Interval{Float64},
