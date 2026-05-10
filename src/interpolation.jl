@@ -335,23 +335,13 @@ function _invert_stage1(tt::TCI.TensorTrain, P::LagrangePolynomials{Float64}, q:
     K_out = K - q
     N = length(P.grid) - 1
 
-    # Build Lagrange L: linear interpolation from binary nodes {0, 0.5} to Chebyshev nodes.
-    # L[σ, β] = σ-th Lagrange basis on {0, 0.5} evaluated at P.grid[β].
-    # L[1, β] = 1 - 2c^β   (σ=0, node at 0)
-    # L[2, β] = 2c^β        (σ=1, node at 0.5)
     L = [1.0 - 2.0 * c for c in P.grid]  # σ=0 row
     L = vcat(L', [2.0 * c for c in P.grid]')  # shape (2, N+1)
 
-    # Contract the last core with L to produce a (r_{K-1}, N+1) decode matrix.
-    # For any QTT (compressed or not) this gives:
-    #   S[i, β] = QTT[(σ₁,...,σ_{K-1}, 0)] × (1−2c^β) + QTT[(σ₁,...,σ_{K-1}, 1)] × 2c^β
-    # i.e. linear interpolation from two binary evaluations to the Chebyshev node c^β.
     core_K = cores[K]                     # (r_{K-1}, 2, 1) for 1-D
     r_K = size(core_K, 1)
     decode = reshape(core_K, r_K, 2) * L  # (r_{K-1}, N+1)
 
-    # Partial contraction of first K_out cores.
-    # current[i, :] = contraction of cores 1..K_out at the i-th binary index.
     current = reshape(cores[1][1, :, :], size(cores[1], 2), size(cores[1], 3))
 
     for k in 2:K_out
@@ -373,11 +363,9 @@ end
 
 function _build_restriction(P::LagrangePolynomials{Float64})
     N = length(P.grid) - 1
-    # R_left[γ, β]  = P(β, 2c^γ)     when c^γ ≤ 0.5, else 0
-    # R_right[γ, β] = P(β, 2c^γ − 1) when c^γ > 0.5, else 0
-    # S_coarse[i, :] = R_left * S_fine[2i-1, :] + R_right * S_fine[2i, :]
-    R_left  = zeros(N + 1, N + 1)
+    R_left = zeros(N + 1, N + 1)
     R_right = zeros(N + 1, N + 1)
+
     for (γ1, c) in enumerate(P.grid)
         if c <= 0.5
             for β in 0:N

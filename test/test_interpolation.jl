@@ -235,7 +235,7 @@ end
     @test size(S, 2) == N + 1
 
     max_err = 0.0
-    for i in 1:2^K_out
+    for i in 1:(2^K_out)
         for β in 0:N
             x_ref = a + (b - a) * (i - 1 + P.grid[β + 1]) / 2^K_out
             max_err = max(max_err, abs(S[i, β + 1] - f(x_ref)))
@@ -257,7 +257,7 @@ end
     K_out = R - 1
     S = result[K_out]
     max_err = 0.0
-    for i in 1:2^K_out
+    for i in 1:(2^K_out)
         for β in 0:N
             x_ref = a + (b - a) * (i - 1 + P.grid[β + 1]) / 2^K_out
             max_err = max(max_err, abs(S[i, β + 1] - f(x_ref)))
@@ -284,10 +284,10 @@ end
     ttvals = tt.(quanticsinds)
 
     max_err = 0.0
-    for i in 1:2^K_out
-        v_left  = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
+    for i in 1:(2^K_out)
+        v_left = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
         v_right = sum(P(β, 0.5) * S[i, β + 1] for β in 0:N)
-        max_err = max(max_err, abs(v_left  - ttvals[2i - 1]))
+        max_err = max(max_err, abs(v_left - ttvals[2i - 1]))
         max_err = max(max_err, abs(v_right - ttvals[2i]))
     end
     @test max_err < 1.0e-11
@@ -312,10 +312,10 @@ end
     ttvals = tt.(quanticsinds)
 
     max_err = 0.0
-    for i in 1:2^K_out
-        v_left  = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
+    for i in 1:(2^K_out)
+        v_left = sum(P(β, 0.0) * S[i, β + 1] for β in 0:N)
         v_right = sum(P(β, 0.5) * S[i, β + 1] for β in 0:N)
-        max_err = max(max_err, abs(v_left  - ttvals[2i - 1]))
+        max_err = max(max_err, abs(v_left - ttvals[2i - 1]))
         max_err = max(max_err, abs(v_right - ttvals[2i]))
     end
     @test max_err < 1.0e-6
