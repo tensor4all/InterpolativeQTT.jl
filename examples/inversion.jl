@@ -4,7 +4,7 @@ using InterpolativeQTT
 R = 10
 N = 10
 a, b = -2.0, 3.0
-f(x) = exp(-x^2+cos(x))
+f(x) = exp(-x^2 + cos(x))
 tol = 1.0e-8
 P = InterpolativeQTT.getChebyshevGrid(N)
 

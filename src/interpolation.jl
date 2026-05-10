@@ -433,6 +433,15 @@ function invertqtt(
     return results
 end
 
+"""
+    estimate_interpolation_error(f, interval, P) -> Float64
+
+Estimate the Chebyshev interpolation error of `f` on `interval` by evaluating
+the Lagrange interpolant (built on the nodes in `P`) at a denser set of test
+points and returning the maximum absolute deviation from `f`.
+
+Works for both 1-D `Interval{Float64}` and N-D `NInterval{N,Float64}`.
+"""
 function estimate_interpolation_error(
         f,
         interval::Interval{Float64},
