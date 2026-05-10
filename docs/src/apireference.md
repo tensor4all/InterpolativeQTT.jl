@@ -17,6 +17,13 @@ InterpolativeQTT.LagrangePolynomials
 InterpolativeQTT.getChebyshevGrid
 ```
 
+## Inversion
+
+```@docs
+InterpolativeQTT.invertqtt
+InterpolativeQTT.estimate_interpolation_error
+```
+
 ## Intervals
 
 ```@docs

@@ -1,4 +1,3 @@
-
 """
 For sparse interpolation
 """
@@ -9,7 +8,7 @@ function angular_local_lagrange(P::LagrangePolynomials{Float64}, M::Int)
     Ā = zeros(N + 1, 2, N + 1)   # indices: [α+1, σ+1, β+1]
 
     for σ in 0:1, β in 0:N
-        x   = (Float64(σ) + P.grid[β + 1]) / 2
+        x = (Float64(σ) + P.grid[β + 1]) / 2
         θ_x = acos(clamp(1 - 2x, -1.0, 1.0))
 
         # Nearest angular grid index (grid is uniform: θ^γ = πγ/N)
@@ -47,7 +46,7 @@ function interpolatesinglescale_sparse(
         numbits::Int,
         polynomialdegree::Int,
         M::Int;
-        tolerance  = 1.0e-12,
+        tolerance = 1.0e-12,
         maxbonddim = typemax(Int)
     )
     _scale(x) = a + (b - a) * x
@@ -58,7 +57,7 @@ function interpolatesinglescale_sparse(
             for sigma in [0, 1], beta in 0:polynomialdegree
     ]
     Acenter = angular_local_lagrange(P, M)
-    Aright  = [
+    Aright = [
         P(alpha, sigma / 2)
             for alpha in 0:polynomialdegree, sigma in [0, 1]
     ]
@@ -86,7 +85,7 @@ function interpolatesinglescale_sparse(
         numbits::Int,
         polynomialdegree::Int,
         M::Int;
-        tolerance  = 1.0e-12,
+        tolerance = 1.0e-12,
         maxbonddim = typemax(Int)
     ) where {D}
     _scale(x::NTuple{D, Float64})::NTuple{D, Float64} = tuple((a .+ (b .- a) .* x)...)
@@ -105,7 +104,7 @@ function interpolatesinglescale_sparse(
 
     # Only this line differs from interpolatesinglescale: sparse core instead of dense
     Acenter_ = angular_local_lagrange(P, M)
-    Acenter  = _direct_product_coretensors(fill(Acenter_, D))
+    Acenter = _direct_product_coretensors(fill(Acenter_, D))
 
     Aright_ = [
         P(alpha, sigma / 2)
