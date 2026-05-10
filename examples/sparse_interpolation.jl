@@ -3,17 +3,17 @@ using CairoMakie
 import QuanticsGrids as QG
 import TensorCrossInterpolation as TCI
 
-α   = 0.1
+α = 0.1
 f(x) = α / sqrt(α^2 + (x - 0.5)^2)
 a, b = 0.0, 1.0
-R    = 10       
-N_dense  = 100     
+R = 10
+N_dense = 100
 N_sparse = 200
 
-grid        = QG.DiscretizedGrid{1}(R, a, b)
+grid = QG.DiscretizedGrid{1}(R, a, b)
 quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
-plotx       = QG.grididx_to_origcoord.(Ref(grid), 1:(2^R))
-origdata    = f.(plotx)
+plotx = QG.grididx_to_origcoord.(Ref(grid), 1:(2^R))
+origdata = f.(plotx)
 
 tt_dense = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N_dense)
 err_dense = maximum(abs.(tt_dense.(quanticsinds) .- origdata))
@@ -24,20 +24,26 @@ errs_sparse = [maximum(abs.(tt.(quanticsinds) .- origdata)) for tt in tt_sparse]
 
 let
     fig = Figure()
-    ax = Axis(fig[1, 1], xlabel = L"x", ylabel = L"f(x)",
-        title = L"Lorentzian peak: $f(x) = \alpha / \sqrt{\alpha^2 + (x-\frac{1}{2})^2}$, $\alpha = %$α$")
+    ax = Axis(
+        fig[1, 1], xlabel = L"x", ylabel = L"f(x)",
+        title = L"Lorentzian peak: $f(x) = \alpha / \sqrt{\alpha^2 + (x-\frac{1}{2})^2}$, $\alpha = %$α$"
+    )
     lines!(ax, plotx, origdata, linewidth = 2)
     fig
 end
 
 let
     fig = Figure()
-    ax = Axis(fig[1, 1], xlabel = L"M \text{ (bandwidth)}", ylabel = "Max absolute error",
+    ax = Axis(
+        fig[1, 1], xlabel = L"M \text{ (bandwidth)}", ylabel = "Max absolute error",
         title = "Sparse construction error vs bandwidth  (N=$N_sparse)",
-        yscale = log10)
+        yscale = log10
+    )
     scatterlines!(ax, M_values, errs_sparse, label = "sparse  N=$N_sparse", linewidth = 2)
-    hlines!(ax, [err_dense], color = :black, linestyle = :dash,
-        label = "dense  N=$N_dense")
+    hlines!(
+        ax, [err_dense], color = :black, linestyle = :dash,
+        label = "dense  N=$N_dense"
+    )
     axislegend(ax, pos = :topright)
     fig
 end
@@ -47,12 +53,18 @@ tt_best = tt_sparse[findfirst(==(M_best), M_values)]
 
 let
     fig = Figure()
-    ax = Axis(fig[1, 1], xlabel = L"\ell", ylabel = L"\chi_\ell",
-        title = "Bond dimensions  (α=$α)")
-    scatterlines!(ax, 1:(R - 1), TCI.linkdims(tt_dense),
-        label = "dense  N=$N_dense", linewidth = 2, marker = :circle)
-    scatterlines!(ax, 1:(R - 1), TCI.linkdims(tt_best),
-        label = "sparse  N=$N_sparse, M=$M_best", linewidth = 2, marker = :diamond)
+    ax = Axis(
+        fig[1, 1], xlabel = L"\ell", ylabel = L"\chi_\ell",
+        title = "Bond dimensions  (α=$α)"
+    )
+    scatterlines!(
+        ax, 1:(R - 1), TCI.linkdims(tt_dense),
+        label = "dense  N=$N_dense", linewidth = 2, marker = :circle
+    )
+    scatterlines!(
+        ax, 1:(R - 1), TCI.linkdims(tt_best),
+        label = "sparse  N=$N_sparse, M=$M_best", linewidth = 2, marker = :diamond
+    )
     axislegend(ax, pos = :topright)
     fig
 end
