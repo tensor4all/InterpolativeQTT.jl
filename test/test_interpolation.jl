@@ -321,6 +321,212 @@ end
     @test max_err < 1.0e-6
 end
 
+# Fused multivariate QTT uses Z-order (Morton) cell indexing: at each resolution
+# level k, all N bits σ_{k,n} are packed into one physical index as
+# σ_flat = σ_{k,1} + 2*σ_{k,2} + ... (dim 1 fastest, column-major within a level).
+# The flat row of S after K_out levels is therefore a bit-interleaved Morton code.
+function _morton_cell_flat(cell_ixs, K_out)
+    ndims = length(cell_ixs)
+    row = 0
+    for p in 0:(K_out - 1)
+        for n in 1:ndims
+            bit = (cell_ixs[n] >> p) & 1
+            row |= bit << (ndims * p + (n - 1))
+        end
+    end
+    return row + 1  # 1-indexed
+end
+
+@testset "invertqtt 2D (uncompressed, Stage 1 values)" begin
+    # Use a bilinear function f(x,y) = x*y so that the bilinear Lagrange Stage 1
+    # reconstruction is algebraically exact — this precisely validates the Morton
+    # cell ordering and the L_mv Kronecker weight structure.
+    R = 6
+    N = 6
+    a, b = (0.0, 0.0), (1.0, 1.0)
+    f(x, y) = x * y
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    @test size(S, 1) == 4^K_out        # (2^2)^{K_out} sub-cells
+    @test size(S, 2) == (N + 1)^2      # (N+1)^2 Chebyshev nodes
+
+    cells_per_dim = 2^K_out
+    h = 1.0 / cells_per_dim
+    max_err = 0.0
+    for ix in 0:min(7, cells_per_dim - 1), iy in 0:min(7, cells_per_dim - 1)
+        cell_flat = _morton_cell_flat((ix, iy), K_out)
+        for βx in 0:N, βy in 0:N
+            β_flat = βx + 1 + (N + 1) * βy
+            x_ref = a[1] + (ix + P.grid[βx + 1]) * h
+            y_ref = a[2] + (iy + P.grid[βy + 1]) * h
+            max_err = max(max_err, abs(S[cell_flat, β_flat] - f(x_ref, y_ref)))
+        end
+    end
+    @test max_err < 1.0e-10
+end
+
+@testset "invertqtt 2D (compressed)" begin
+    # Round-trip test on a compressed QTT: the Chebyshev interpolation at the
+    # fine-level dyadic positions must reproduce the (compressed) QTT values exactly
+    # (algebraically), regardless of function. This checks invertqtt on non-trivial TTs.
+    R = 7
+    N = 8
+    a, b = (-1.0, -1.0), (1.0, 1.0)
+    f(x, y) = cos(π * x) * sin(π * y)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 1.0e-10)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    @test size(S, 1) == 4^K_out
+    @test size(S, 2) == (N + 1)^2
+
+    cells_per_dim = 2^K_out
+    grid = QG.DiscretizedGrid{2}(R, a, b; unfoldingscheme = :fused)
+    max_err = 0.0
+    for ix in 0:min(4, cells_per_dim - 1), iy in 0:min(4, cells_per_dim - 1)
+        cell_flat = _morton_cell_flat((ix, iy), K_out)
+        for (σx, σy) in ((0, 0), (1, 0), (0, 1), (1, 1))
+            qinds = QG.grididx_to_quantics(grid, (2 * ix + σx + 1, 2 * iy + σy + 1))
+            tt_val = tt(qinds)
+            tx, ty = σx / 2.0, σy / 2.0
+            interp_val = sum(
+                P(βx, tx) * P(βy, ty) * S[cell_flat, βx + 1 + (N + 1) * βy]
+                    for βx in 0:N, βy in 0:N
+            )
+            max_err = max(max_err, abs(interp_val - tt_val))
+        end
+    end
+    @test max_err < 1.0e-8
+end
+
+@testset "invertqtt 2D round trip" begin
+    # For q=1 in 2D, within each sub-cell at level K_out the inversion uses
+    # linear Lagrange interpolation over the 4 fine-level (K=K_out+1) dyadic points.
+    # At those 4 points (σx/2, σy/2) the Chebyshev interpolation should reproduce
+    # the QTT values up to the stage-1 approximation error O(2^{-2K}).
+    R = 8
+    N = 10
+    a, b = (0.0, 0.0), (1.0, 1.0)
+    f(x, y) = exp(-x^2 - y^2)
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    cells_per_dim = 2^K_out
+    h = 1.0 / cells_per_dim
+
+    grid = QG.DiscretizedGrid{2}(R, a, b; unfoldingscheme = :fused)
+    max_err = 0.0
+    for ix in 0:min(3, cells_per_dim - 1), iy in 0:min(3, cells_per_dim - 1)
+        cell_flat = _morton_cell_flat((ix, iy), K_out)
+        for (σx, σy) in ((0, 0), (1, 0), (0, 1), (1, 1))
+            # QTT value at the fine-grid dyadic point (2*ix+σx, 2*iy+σy)
+            qinds = QG.grididx_to_quantics(grid, (2 * ix + σx + 1, 2 * iy + σy + 1))
+            tt_val = tt(qinds)
+            # Chebyshev interpolation at relative position (σx/2, σy/2)
+            tx, ty = σx / 2.0, σy / 2.0
+            interp_val = sum(
+                P(βx, tx) * P(βy, ty) * S[cell_flat, βx + 1 + (N + 1) * βy]
+                    for βx in 0:N, βy in 0:N
+            )
+            max_err = max(max_err, abs(interp_val - tt_val))
+        end
+    end
+    @test max_err < 1.0e-8
+end
+
+@testset "invertqtt 2D Stage 2 coarse levels" begin
+    # Use f(x,y) = x*y (bilinear) so that both Stage 1 and Stage 2 restriction
+    # are algebraically exact. This verifies the restriction operator at all levels
+    # including multiple cells per level (not just cell 1).
+    R = 6
+    N = 6
+    a, b = (0.0, 0.0), (1.0, 1.0)
+    f(x, y) = x * y
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    for (k, S) in enumerate(result)
+        cells_per_dim = 2^k
+        h = 1.0 / cells_per_dim
+        max_err = 0.0
+        for ix in 0:min(3, cells_per_dim - 1), iy in 0:min(3, cells_per_dim - 1)
+            cell_flat = _morton_cell_flat((ix, iy), k)
+            for βx in 0:N, βy in 0:N
+                β_flat = βx + 1 + (N + 1) * βy
+                x_ref = a[1] + (ix + P.grid[βx + 1]) * h
+                y_ref = a[2] + (iy + P.grid[βy + 1]) * h
+                max_err = max(max_err, abs(S[cell_flat, β_flat] - f(x_ref, y_ref)))
+            end
+        end
+        @test max_err < 1.0e-8
+    end
+end
+
+@testset "invertqtt 3D (uncompressed, Stage 1 values)" begin
+    # Use f(x,y,z) = x*y*z (trilinear) so that the trilinear Lagrange Stage 1 is
+    # algebraically exact — validates Morton ordering and L_mv Kronecker structure in 3D.
+    R = 5
+    N = 5
+    a, b = (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
+    f(x, y, z) = x * y * z
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    K_out = R - 1
+    S = result[K_out]
+    @test size(S, 1) == 8^K_out        # (2^3)^{K_out}
+    @test size(S, 2) == (N + 1)^3
+
+    cells_per_dim = 2^K_out
+    h = 1.0 / cells_per_dim
+    max_err = 0.0
+    for ix in 0:min(2, cells_per_dim - 1), iy in 0:min(2, cells_per_dim - 1), iz in 0:min(2, cells_per_dim - 1)
+        cell_flat = _morton_cell_flat((ix, iy, iz), K_out)
+        for βx in 0:N, βy in 0:N, βz in 0:N
+            β_flat = βx + 1 + (N + 1) * βy + (N + 1)^2 * βz
+            x_ref = a[1] + (ix + P.grid[βx + 1]) * h
+            y_ref = a[2] + (iy + P.grid[βy + 1]) * h
+            z_ref = a[3] + (iz + P.grid[βz + 1]) * h
+            max_err = max(max_err, abs(S[cell_flat, β_flat] - f(x_ref, y_ref, z_ref)))
+        end
+    end
+    @test max_err < 1.0e-10
+end
+
+@testset "invertqtt 2D output dimensions" begin
+    R = 5
+    N = 4
+    a, b = (0.0, 0.0), (1.0, 1.0)
+    f(x, y) = x * y
+    P = InterpolativeQTT.getChebyshevGrid(N)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, a, b, R, N; tolerance = 0.0)
+    result = InterpolativeQTT.invertqtt(tt, P; q = 1)
+
+    @test length(result) == R - 1
+    for k in 1:(R - 1)
+        @test size(result[k], 1) == 4^k
+        @test size(result[k], 2) == (N + 1)^2
+    end
+end
+
 @testset "invertqtt (Stage 2 coarse levels)" begin
     R = 10
     N = 8
