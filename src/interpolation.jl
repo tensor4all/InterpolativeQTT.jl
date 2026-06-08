@@ -391,6 +391,71 @@ function _apply_stage2(S::Matrix{Float64}, R_left::Matrix{Float64}, R_right::Mat
     return S_coarse
 end
 
+function _invert_stage1_mv(tt::TCI.TensorTrain, P::LagrangePolynomials{Float64}, q::Int, ndims::Int)
+    cores = TCI.sitetensors(tt)
+    K = length(cores)
+    K_out = K - q
+
+    L_1d = vcat(
+        [1.0 - 2.0 * c for c in P.grid]',
+        [2.0 * c for c in P.grid]'
+    )
+    # foldl makes the last element innermost (fastest index), matching Julia column-major
+    # physical ordering where dimension 1 is fastest: σ_flat = σ_1 + 2σ_2 + 4σ_3 + ...
+    L_mv = foldl(kron, fill(L_1d, ndims))  # (2^ndims, (N+1)^ndims)
+
+    phys_dim = 2^ndims
+    core_K = cores[K]
+    r_K = size(core_K, 1)
+    decode = reshape(core_K, r_K, phys_dim) * L_mv  # (r_{K-1}, (N+1)^ndims)
+
+    current = reshape(cores[1][1, :, :], size(cores[1], 2), size(cores[1], 3))
+
+    for k in 2:K_out
+        core = cores[k]
+        phys = size(core, 2)
+        r_right = size(core, 3)
+        n = size(current, 1)
+        new_current = zeros(eltype(current), n * phys, r_right)
+        for i in 1:n
+            v = current[i, :]
+            for σ in 1:phys
+                new_current[(i - 1) * phys + σ, :] = v' * core[:, σ, :]
+            end
+        end
+        current = new_current
+    end
+    return current * decode   # ((2^ndims)^{K_out}, (N+1)^ndims)
+end
+
+function _apply_stage2_mv(
+        S::Matrix{Float64},
+        R_left::Matrix{Float64},
+        R_right::Matrix{Float64},
+        ndims::Int
+    )
+    phys = 2^ndims
+    n_fine = size(S, 1)
+    n_coarse = n_fine ÷ phys
+    n_cheb_1d = size(R_left, 1)
+    n_cheb = n_cheb_1d^ndims
+
+    S_coarse = zeros(n_coarse, n_cheb)
+
+    # Iterators.product gives tuples (σ_1,...,σ_N) with σ_1 fastest (column-major),
+    # so enumerate index matches the QTT physical dimension flat index.
+    for (σ_idx, σ) in enumerate(Iterators.product(ntuple(_ -> 0:1, ndims)...))
+        Rs = [σ[n] == 0 ? R_left : R_right for n in 1:ndims]
+        # reverse so dim 1 is innermost in the Kronecker product, matching the
+        # column-major Chebyshev multi-index where β_1 is fastest.
+        R_σ = foldl(kron, reverse(Rs))  # ((N+1)^ndims, (N+1)^ndims)
+        for i in 1:n_coarse
+            S_coarse[i, :] += R_σ * S[(i - 1) * phys + σ_idx, :]
+        end
+    end
+    return S_coarse
+end
+
 """
     invertqtt(tt, P; q=1) -> Vector{Matrix{Float64}}
 
@@ -421,14 +486,21 @@ function invertqtt(
     K_out = K - q
     1 <= q < K || throw(ArgumentError("q must satisfy 1 ≤ q < K=$K, got q=$q"))
 
-    S = _invert_stage1(tt, P, q)   # (2^{K_out}, N+1)
+    phys_dim = size(TCI.sitetensors(tt)[1], 2)
+    ndims = round(Int, log2(phys_dim))
+
+    S = ndims == 1 ?
+        _invert_stage1(tt, P, q) :
+        _invert_stage1_mv(tt, P, q, ndims)
 
     R_left, R_right = _build_restriction(P)
 
     results = Vector{Matrix{Float64}}(undef, K_out)
     results[K_out] = S
     for k in (K_out - 1):-1:1
-        results[k] = _apply_stage2(results[k + 1], R_left, R_right)
+        results[k] = ndims == 1 ?
+            _apply_stage2(results[k + 1], R_left, R_right) :
+            _apply_stage2_mv(results[k + 1], R_left, R_right, ndims)
     end
     return results
 end
