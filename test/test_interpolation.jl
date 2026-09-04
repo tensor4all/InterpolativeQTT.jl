@@ -162,6 +162,33 @@ end
     @test vec(c123) ≈ vec(c123_ref)
 end
 
+@testset "high-degree Chebyshev basis stays finite" begin
+    K = 600
+    P = InterpolativeQTT.getChebyshevGrid(K)
+
+    @test length(P.grid) == K + 1
+    @test all(isfinite, P.baryweights)
+    @test P(0, P.grid[1]) ≈ 1.0
+    @test P(1, P.grid[1]) ≈ 0.0 atol = 1.0e-12
+
+    A = InterpolativeQTT.interpolationtensor(P)
+    @test all(isfinite, A)
+end
+
+@testset "high-degree single-scale interpolation remains accurate" begin
+    R = 3
+    K = 600
+    f(x) = sin(2 * π * x)
+
+    tt = InterpolativeQTT.interpolatesinglescale(f, 0.0, 1.0, R, K)
+    grid = QG.DiscretizedGrid{1}(R, 0.0, 1.0)
+    quanticsinds = QG.grididx_to_quantics.(Ref(grid), 1:(2^R))
+    xs = QG.grididx_to_origcoord.(Ref(grid), 1:(2^R))
+    maxerr = maximum(abs.(tt.(quanticsinds) .- f.(xs)))
+
+    @test maxerr < 1.0e-10
+end
+
 
 @testset "multiscale interpolation (1/x)" begin
     R = 12

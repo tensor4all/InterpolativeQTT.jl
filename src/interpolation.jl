@@ -2,7 +2,7 @@
     LagrangePolynomials{T}
 
 Barycentric Lagrange basis over a grid of type `T`. Stores the grid nodes and the
-pre-computed barycentric weights so that each basis function can be evaluated in O(K) time.
+pre-computed scaled barycentric weights so that each basis function can be evaluated in O(K) time.
 """
 struct LagrangePolynomials{T}
     grid::Vector{T}
@@ -10,11 +10,30 @@ struct LagrangePolynomials{T}
 end
 
 function (P::LagrangePolynomials{T})(alpha::Int, x::T)::T where {T}
-    if abs(x - P.grid[alpha + 1]) >= 1.0e-14
-        return prod(x .- P.grid) * P.baryweights[alpha + 1] / (x - P.grid[alpha + 1])
-    else
+    if alpha < 0 || alpha >= length(P.grid)
+        throw(BoundsError(P.grid, alpha + 1))
+    end
+    if !isfinite(x)
+        throw(ArgumentError("basis evaluation point must be finite"))
+    end
+
+    tol = T(1.0e-14)
+    if abs(x - P.grid[alpha + 1]) < tol
         return one(T)
     end
+    if any(node -> abs(x - node) < tol, P.grid)
+        return zero(T)
+    end
+
+    denominator = zero(T)
+    for j in eachindex(P.grid)
+        denominator += P.baryweights[j] / (x - P.grid[j])
+    end
+    if iszero(denominator) || !isfinite(denominator)
+        throw(ArgumentError("barycentric denominator must be finite and non-zero"))
+    end
+
+    return (P.baryweights[alpha + 1] / (x - P.grid[alpha + 1])) / denominator
 end
 
 """
@@ -24,12 +43,17 @@ Return a `LagrangePolynomials` object built on the `K+1` Chebyshev nodes of the 
 kind mapped to `[0, 1]`, together with their barycentric weights.
 """
 function getChebyshevGrid(K::Int)::LagrangePolynomials{Float64}
+    K >= 1 || throw(ArgumentError("polynomial degree must be at least 1"))
     chebgrid = 0.5 * (1.0 .- cospi.((0:K) / K))
-    baryweights = [
-        prod(j == m ? 1.0 : 1.0 / (chebgrid[j + 1] - chebgrid[m + 1]) for m in 0:K)
+    baryweights = _chebyshev_lobatto_baryweights(K)
+    return LagrangePolynomials{Float64}(chebgrid, baryweights)
+end
+
+function _chebyshev_lobatto_baryweights(K::Int)::Vector{Float64}
+    return [
+        (j == 0 || j == K ? 0.5 : 1.0) * (isodd(j) ? -1.0 : 1.0)
             for j in 0:K
     ]
-    return LagrangePolynomials{Float64}(chebgrid, baryweights)
 end
 
 function interpolationtensor(P::LagrangePolynomials{Float64})
