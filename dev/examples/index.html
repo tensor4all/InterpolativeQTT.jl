@@ -58,7 +58,7 @@ end</code></pre><img src="c7ba5d6c.png" alt="Example block output"/><p>Pointwise
     lines!(ax, plotx, abs.(ttdata_a .- origdata) .+ 1e-16, label = &quot;adaptive&quot;,     linewidth = 2)
     axislegend(ax, pos = :best)
     fig
-end</code></pre><img src="18f218c3.png" alt="Example block output"/><p>The bond dimensions reveal where refinement happened — the adaptive QTT concentrates rank near the peak:</p><pre><code class="language-julia hljs">let
+end</code></pre><img src="db95bc75.png" alt="Example block output"/><p>The bond dimensions reveal where refinement happened — the adaptive QTT concentrates rank near the peak:</p><pre><code class="language-julia hljs">let
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel = L&quot;\ell&quot;, ylabel = L&quot;\chi_\ell&quot;, title = &quot;Bond dimensions&quot;)
     scatterlines!(ax, 1:(R - 1), TCI.linkdims(tt),          label = &quot;single-scale&quot;, linewidth = 2)
@@ -92,12 +92,12 @@ errs_sparse = [maximum(abs.(tt.(quanticsinds) .- origdata)) for tt in tt_sparse]
 println(&quot;Dense  N=$N_dense:  max err = $err_dense  rank = $(TCI.rank(tt_dense))&quot;)
 for (M, tt, err) in zip(M_values, tt_sparse, errs_sparse)
     println(&quot;Sparse N=$N_sparse M=$M:  max err = $err  rank = $(TCI.rank(tt))&quot;)
-end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dense  N=100:  max err = 1.1513012765362873e-12  rank = 10
-Sparse N=200 M=5:  max err = 1.1567413693569506e-12  rank = 10
-Sparse N=200 M=10:  max err = 1.380118241911532e-12  rank = 10
-Sparse N=200 M=15:  max err = 6.054934331700679e-12  rank = 10
-Sparse N=200 M=20:  max err = 2.773781204723491e-12  rank = 10
-Sparse N=200 M=30:  max err = 4.1328170774512785e-8  rank = 13</code></pre><p>Increasing the bandwidth <span>$M$</span> drives the sparse error toward the dense baseline:</p><pre><code class="language-julia hljs">let
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dense  N=100:  max err = 1.148414696672262e-12  rank = 10
+Sparse N=200 M=5:  max err = 1.1582956815914258e-12  rank = 10
+Sparse N=200 M=10:  max err = 1.3857803793371204e-12  rank = 10
+Sparse N=200 M=15:  max err = 4.869826764064555e-12  rank = 10
+Sparse N=200 M=20:  max err = 9.682865620419534e-12  rank = 10
+Sparse N=200 M=30:  max err = 2.1347025480622506e-8  rank = 13</code></pre><p>Increasing the bandwidth <span>$M$</span> drives the sparse error toward the dense baseline:</p><pre><code class="language-julia hljs">let
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel = L&quot;M \text{ (bandwidth)}&quot;, ylabel = &quot;Max absolute error&quot;,
               title = &quot;Sparse error vs bandwidth (N = $N_sparse)&quot;, yscale = log10)
@@ -105,7 +105,7 @@ Sparse N=200 M=30:  max err = 4.1328170774512785e-8  rank = 13</code></pre><p>In
     hlines!(ax, [err_dense], color = :black, linestyle = :dash, label = &quot;dense  N=$N_dense&quot;)
     axislegend(ax, pos = :topright)
     fig
-end</code></pre><img src="c493a69b.png" alt="Example block output"/><p>With a moderate bandwidth <span>$M = 10$</span> the sparse QTT already matches the dense construction in accuracy while using far fewer bond dimensions:</p><pre><code class="language-julia hljs">M_best  = 10
+end</code></pre><img src="4c2be86e.png" alt="Example block output"/><p>With a moderate bandwidth <span>$M = 10$</span> the sparse QTT already matches the dense construction in accuracy while using far fewer bond dimensions:</p><pre><code class="language-julia hljs">M_best  = 10
 tt_best = tt_sparse[findfirst(==(M_best), M_values)]
 
 let
@@ -138,4 +138,4 @@ println(&quot;Output shape: $(size(S))  — $(2^K_out) sub-intervals × $(N+1) C
     for i in 1:2^K_out, β in 0:N
 )
 
-println(&quot;Max error at Chebyshev nodes: $max_err&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Max error at Chebyshev nodes: 0.0005407330945944588</code></pre><p>The error is bounded by the SVD truncation tolerance plus the <span>$O(h^2)$</span> accuracy of the linear Stage 1 interpolation (<span>$h = 2^{-(R-1)}$</span>). Both contributions are small for moderate <span>$R$</span>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../apireference/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 26 June 2026 06:24">Friday 26 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+println(&quot;Max error at Chebyshev nodes: $max_err&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Max error at Chebyshev nodes: 0.0005407330945935707</code></pre><p>The error is bounded by the SVD truncation tolerance plus the <span>$O(h^2)$</span> accuracy of the linear Stage 1 interpolation (<span>$h = 2^{-(R-1)}$</span>). Both contributions are small for moderate <span>$R$</span>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../apireference/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Saturday 5 September 2026 07:21">Saturday 5 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
